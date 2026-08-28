@@ -19,7 +19,31 @@ let currentReport=[];
 function filteredRows(){let rs=$("rs").value,start=$("start").value,end=$("end").value;return raw.filter(r=>{let n=r.rs||r.RS,d=dateOf(r);if(rs&&n!==rs)return false;if(start&&(!d||d<new Date(start)))return false;if(end&&(!d||d>new Date(end+"T23:59:59")))return false;return true})}
 function reportData(){let rows=filteredRows(),map={};rows.forEach(r=>{let n=r.rs||r.RS;if(!n)return;if(!map[n])map[n]={rs:n,rw:0,lw:0,rl:0,ll:0};let m=map[n],w=num(r.berat||r["Berat (KG)"]),u=num(r.unit||r["Unit (PCS)"]);if(isLaundry(r)){m.lw+=w;m.ll+=u}else{m.rw+=w;m.rl+=u}});return Object.values(map).sort((a,b)=>a.rs.localeCompare(b.rs)).map(x=>({...x,wd:Math.abs(x.rw-x.lw),ld:Math.abs(x.rl-x.ll),status:(x.rw===x.lw&&x.rl===x.ll)?"Sesuai":"Ada Selisih"}))}
 function reportMeta(){const rs=$("rs").value||"Semua RS",start=$("start").value?new Date($("start").value).toLocaleDateString("id-ID"):"Semua",end=$("end").value?new Date($("end").value).toLocaleDateString("id-ID"):"Semua";return {rs,start,end,generated:new Intl.DateTimeFormat("id-ID",{dateStyle:"medium",timeStyle:"short"}).format(new Date())}}
-function exportExcel(){if(!currentReport.length)return alert("Tidak ada data untuk diexport.");const meta=reportMeta(),a=currentReport,tw=a.reduce((s,x)=>s+x.rw,0),tl=a.reduce((s,x)=>s+x.rl,0),dw=a.reduce((s,x)=>s+x.wd,0),dl=a.reduce((s,x)=>s+x.ld,0);const aoa=[["BILLING KILO LINEN"],["Laporan Monitoring RS dan Laundry"],[],["Filter Rumah Sakit",meta.rs],["Periode",meta.start+" s.d. "+meta.end],["Diexport",meta.generated],[],["RINGKASAN"],["Total Berat RS",tw,"KG"],["Total Linen RS",tl,"PCS"],["Total Selisih Berat",dw,"KG"],["Total Selisih Linen",dl,"PCS"],[],["RUMAH SAKIT","BERAT RS (KG)","BERAT BACY (KG)","SELISIH BERAT (KG)","LINEN RS (PCS)","LINEN BACY (PCS)","SELISIH LINEN (PCS)","STATUS"]];a.forEach(x=>aoa.push([x.rs,x.rw,x.lw,x.wd,x.rl,x.ll,x.ld,x.status]));const ws=XLSX.utils.aoa_to_sheet(aoa);ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:7}},{s:{r:1,c:0},e:{r:1,c:7}}];ws["!cols"]=[{wch:28},{wch:16},{wch:18},{wch:20},{wch:17},{wch:19},{wch:21},{wch:15}];ws["!freeze"]={xSplit:0,ySplit:14};for(let c=0;c<8;c++){let cell=ws[XLSX.utils.encode_cell({r:13,c})];if(cell)cell.s={font:{bold:true,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"0B7B5A"}},alignment:{horizontal:"center"}}}const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Billing Linen");XLSX.writeFile(wb,"Billing-Kilo-Linen.xlsx")}
+function exportExcel(){
+if(!currentReport.length)return alert("Tidak ada data untuk diexport.");
+const rows=currentReport.map(x=>({
+  "RUMAH SAKIT":x.rs,
+  "BERAT RS (KG)":x.rw,
+  "BERAT BACY (KG)":x.lw,
+  "SELISIH BERAT (KG)":x.wd,
+  "LINEN RS (PCS)":x.rl,
+  "LINEN BACY (PCS)":x.ll,
+  "SELISIH LINEN (PCS)":x.ld,
+  "STATUS":x.status
+}));
+const ws=XLSX.utils.json_to_sheet(rows);
+ws["!cols"]=[
+  {wch:28},{wch:18},{wch:18},{wch:20},
+  {wch:18},{wch:18},{wch:20},{wch:15}
+];
+ws["!autofilter"]={ref:XLSX.utils.encode_range({
+  s:{r:0,c:0},e:{r:rows.length,c:7}
+})};
+ws["!freeze"]={xSplit:0,ySplit:1};
+const wb=XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb,ws,"Data");
+XLSX.writeFile(wb,"Data-Billing-Kilo-Linen.xlsx");
+}
 function exportPDF(){if(!currentReport.length)return alert("Tidak ada data untuk diexport.");const {jsPDF}=window.jspdf,doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"}),meta=reportMeta(),a=currentReport,tw=a.reduce((s,x)=>s+x.rw,0),tl=a.reduce((s,x)=>s+x.rl,0),dw=a.reduce((s,x)=>s+x.wd,0),dl=a.reduce((s,x)=>s+x.ld,0);doc.setFillColor(11,123,90);doc.roundedRect(10,9,12,12,3,3,"F");doc.setFillColor(255,255,255);doc.rect(13,14,1.8,4,"F");doc.rect(16,11.5,1.8,6.5,"F");doc.rect(19,13,1.8,5,"F");doc.setTextColor(20,33,31);doc.setFont("helvetica","bold");doc.setFontSize(18);doc.text("BILLING KILO LINEN",28,15);doc.setFont("helvetica","normal");doc.setTextColor(100,112,108);doc.setFontSize(9);doc.text("Laporan Monitoring Perbandingan Rumah Sakit dan Laundry",28,21);doc.text(`Rumah Sakit: ${meta.rs}   •   Periode: ${meta.start} s.d. ${meta.end}`,10,31);doc.text(`Diexport: ${meta.generated}`,10,36);const cards=[["Total Berat RS",fmt(tw)+" KG"],["Total Linen RS",fmt(tl)+" PCS"],["Selisih Berat",fmt(dw)+" KG"],["Selisih Linen",fmt(dl)+" PCS"]];cards.forEach((x,i)=>{const X=10+i*69;doc.setFillColor(246,249,248);doc.roundedRect(X,43,64,17,3,3,"F");doc.setTextColor(120,130,127);doc.setFontSize(7);doc.text(x[0],X+4,49);doc.setTextColor(20,33,31);doc.setFont("helvetica","bold");doc.setFontSize(13);doc.text(x[1],X+4,56)});doc.autoTable({startY:68,head:[["RUMAH SAKIT","BERAT RS","BERAT BACY","SELISIH","LINEN RS","LINEN BACY","SELISIH","STATUS"]],body:a.map(x=>[x.rs,fmt(x.rw)+" KG",fmt(x.lw)+" KG",fmt(x.wd)+" KG",fmt(x.rl)+" PCS",fmt(x.ll)+" PCS",fmt(x.ld)+" PCS",x.status]),theme:"plain",styles:{fontSize:8,cellPadding:3,textColor:[20,33,31],lineColor:[230,236,234],lineWidth:.2},headStyles:{fillColor:[11,123,90],textColor:[255,255,255],fontStyle:"bold",halign:"center"},columnStyles:{0:{halign:"left",cellWidth:42},7:{cellWidth:23,halign:"center"}},alternateRowStyles:{fillColor:[248,250,249]},didDrawPage:()=>{const p=doc.internal.getNumberOfPages();doc.setFontSize(7);doc.setTextColor(135,145,142);doc.text("Billing Kilo Linen • Halaman "+p,10,204);}});doc.save("Billing-Kilo-Linen.pdf")}
 ["rs","start","end"].forEach(id=>$(id).addEventListener("change",render));$("reset").onclick=()=>{$("rs").value="";$("start").value="";$("end").value="";render()};$("refresh").onclick=load;
 const exportMenu=$("exportMenu"),exportTrigger=$("exportTrigger");
